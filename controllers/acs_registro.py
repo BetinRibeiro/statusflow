@@ -1,0 +1,198 @@
+# -*- coding: utf-8 -*-
+
+# Definição da função de index
+@auth.requires_login()
+def index():
+    # Busca o usuário e a empresa relacionada
+    usuario = db.usuario_empresa(db.usuario_empresa.usuario == auth.user.id)
+    empresa = db.empresa(usuario.empresa)
+
+    # Redireciona para a página inicial se o usuário estiver inativo
+    if usuario.ativo == False:
+        redirect(URL('default', 'index'))
+
+    # Configurações de paginação e verificação dos parâmetros da URL
+    paginacao = empresa.paginacao
+    if len(request.args) == 0:
+        pagina = 1
+    else:
+        try:
+            pagina = int(request.args[0])
+        except ValueError:
+            redirect(URL(args=[1]))
+
+    # Lógica de cálculo de páginas e limites
+    if pagina <= 0:
+        pagina = 1
+    total = db((db.registro_atividade.empresa == empresa.id)).count()
+    paginas = total // paginacao
+    if total % paginacao:
+        paginas += 1
+    if total == 0:
+        paginas = 1
+    if pagina > paginas:
+        redirect(URL(args=[paginas]))
+
+    # Limites para a seleção dos registros
+    limites = (paginacao * (pagina - 1), (paginacao * pagina))
+
+    # Consulta os registros de atividade da empresa, incluindo filtro de pesquisa
+    registros = db((db.registro_atividade.empresa == empresa.id)).select(
+        limitby=limites, orderby=~db.registro_atividade.id)
+    consul = request.args(1)
+    if consul:
+        registros = db((db.registro_atividade.empresa == empresa.id) & (
+            (db.registro_atividade.hash_acesso.contains(consul)) | (db.registro_atividade.cliente.contains(consul)))).select(
+            limitby=limites, orderby=db.registro_atividade.id)
+
+    # Retorna os dados para a visualização
+    return dict(rows=registros, pagina=pagina, paginas=paginas, total=total, empresa=empresa)
+
+
+# Definição da função de cadastro
+@auth.requires_login()
+def cadastrar():
+    # Busca o usuário e empresa relacionada
+    usuario = db.usuario_empresa(db.usuario_empresa.usuario == auth.user.id)
+    empresa = db.empresa(usuario.empresa)
+
+    # Configurações da visualização e definição do título da página
+    response.view = 'generic.html'
+    request.function = 'Cadastro de análise'
+    db.registro_atividade.data_inicial.default = tres_horas_antes()
+    db.registro_atividade.hash_acesso.default = generate_hash()
+#     db.registro_atividade.usuario.writable=True
+    db.registro_atividade.usuario.default=auth.user.id
+    # Define o valor padrão da empresa no formulário e processa o formulário
+    db.registro_atividade.empresa.default = usuario.empresa
+    form = SQLFORM(db.registro_atividade).process()
+
+    # Redireciona para a página principal após aceitar o formulário
+    if form.accepted:
+        redirect(URL('index'))
+    elif form.errors:
+        response.flash = 'Formulário não aceito'  # exibe uma mensagem de erro se o formulário não for aceito
+
+    # Retorna o formulário para a visualização
+    return dict(form=form)
+
+
+# Definição da função de alteração
+@auth.requires_login()
+def alterar():
+    # Busca o usuário e serviço relacionado
+    usuario = db.usuario_empresa(db.usuario_empresa.usuario == auth.user.id)
+    registro_atividade = db.registro_atividade(request.args(0, cast=int))
+    if len(request.args) == 1:
+        pagina = 1
+    else:
+        try:
+            pagina = int(request.args[1])
+        except ValueError:
+            redirect(URL(args=[registro_atividade.id]))
+
+        
+        
+    # Verifica se o serviço pertence à empresa do usuário
+    if registro_atividade.empresa != usuario.empresa:
+        redirect(URL('index'))
+
+    # Configurações da visualização e definição do título da página
+    response.view = 'generic.html'
+    request.function = 'Alterar de análise'
+
+    # Cria e processa o formulário de alteração
+    form = SQLFORM(db.registro_atividade, request.args(0, cast=int), deletable=True)
+    if form.process().accepted:
+        redirect(URL('index', args=pagina))
+    elif form.errors:
+        response.flash = 'Formulário não aceito'  # exibe uma mensagem de erro se o formulário não for aceito
+
+    # Retorna o formulário para a visualização
+    return dict(form=form)
+
+# Definição da função de alteração
+@auth.requires_login()
+def alterar_status():
+    # Busca o usuário e serviço relacionado
+    usuario = db.usuario_empresa(db.usuario_empresa.usuario == auth.user.id)
+    registro_atividade = db.registro_atividade(request.args(0, cast=int))
+    if len(request.args) == 1:
+        pagina = 1
+    else:
+        try:
+            pagina = int(request.args[1])
+        except ValueError:
+            redirect(URL(args=[registro_atividade.id]))
+    if not registro_atividade.laudo:
+        # Verifica se o serviço pertence à empresa do usuário
+        if registro_atividade.empresa != usuario.empresa:
+            redirect(URL('index'))
+        if "ebimento" in registro_atividade.status:
+            registro_atividade.status = "Inicio da analise"
+        elif "nicio" in registro_atividade.status:
+            registro_atividade.status = "Fim da analise"
+        elif "Fim" in registro_atividade.status:
+            redirect(URL('enviar_laudo', args=[registro_atividade.id,pagina]))
+            registro_atividade.status = "Laudo emitido"
+        elif "Laudo" in registro_atividade.status:
+            registro_atividade.status = "Recebimento da amostra"
+        registro_atividade.update_record()
+    return redirect(URL('index', args=pagina))
+
+
+
+# Definição da função de alteração
+@auth.requires_login()
+def enviar_laudo():
+    # Busca o usuário e serviço relacionado
+    usuario = db.usuario_empresa(db.usuario_empresa.usuario == auth.user.id)
+    registro_atividade = db.registro_atividade(request.args(0, cast=int))
+    if len(request.args) == 1:
+        pagina = 1
+    else:
+        try:
+            pagina = int(request.args[1])
+        except ValueError:
+            redirect(URL(args=[registro_atividade.id]))
+
+        
+    db.registro_atividade.cliente.writable=False
+
+    db.registro_atividade.laudo.writable=True
+    db.registro_atividade.laudo.readable=True
+        
+    # Verifica se o serviço pertence à empresa do usuário
+    if registro_atividade.empresa != usuario.empresa:
+        redirect(URL('index'))
+
+    # Configurações da visualização e definição do título da página
+    response.view = 'generic.html'
+    request.function = 'Enviar Laudo'
+
+    # Cria e processa o formulário de alteração
+    form = SQLFORM(db.registro_atividade, request.args(0, cast=int))
+    if form.process().accepted:
+        redirect(URL('index', args=pagina))
+    elif form.errors:
+        response.flash = 'Formulário não aceito'  # exibe uma mensagem de erro se o formulário não for aceito
+
+    # Retorna o formulário para a visualização
+    return dict(form=form)
+
+
+def ver_registro():
+#     response.view = 'generic.html'
+    hash_registro = None
+    registro = None
+    if len(request.args) == 1:
+        hash_registro = str(request.args[0])
+    else:
+        redirect(URL('acs_mensagem','sem_registro'))
+    if hash_registro:
+        registro = db.registro_atividade(db.registro_atividade.hash_acesso==hash_registro)
+    else:
+        redirect(URL('acs_mensagem','sem_registro'))
+    if registro==None:
+        redirect(URL('acs_mensagem','sem_registro'))
+    return locals()

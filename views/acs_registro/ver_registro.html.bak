@@ -1,0 +1,21 @@
+{{extend 'head_padrao.html'}}
+<!-- {{=registro}} -->
+  <div class="py-5" >
+    <div class="container">
+      <div class="row">
+        <div class="col-md-12">
+          <div class="list-group">
+           
+            <a href="#" class="list-group-item list-group-item-action">{{=registro.data_inicial}}</a>
+            <a href="#" class="list-group-item list-group-item-action">{{=registro.data_final}}</a>
+            <a href="#" class="list-group-item list-group-item-action">{{=registro.status}}</a>
+            <a href="#" class="list-group-item list-group-item-action">{{=registro.observacao}}</a>
+          </div>
+            <div class="text-center">
+                
+            <a href="{{=URL('default','download', args=registro.laudo)}}" class="btn btn-primary">Download</a>
+            </div>
+        </div>
+      </div>
+    </div>
+  </div>

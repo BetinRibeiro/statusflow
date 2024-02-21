@@ -1,0 +1,19 @@
+# -*- coding: utf-8 -*-
+import hashlib
+import random
+import string
+
+def generate_hash(tamanho=15):
+    # Defina o tamanho do hash
+    hash_size = tamanho
+    # Crie uma string com todos os caracteres possíveis
+    characters = string.ascii_lowercase + string.digits
+    # Inicialize a variável hash
+    hash_str = ""
+    # Loop para gerar cada caractere do hash
+    for _ in range(hash_size):
+        # Escolha um caractere aleatório
+        char = random.choice(characters)
+        # Adicione o caractere ao hash
+        hash_str += char
+    return hash_str
